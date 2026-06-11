@@ -31,9 +31,9 @@ const FALLBACK_ACCENT_RGB: Rgb = [80, 160, 255];
 const LOGO_BLOCK_WIDTH = Math.max(...LOGO_LINES.map((line) => [...line].length));
 
 const PALETTE_STEPS = 24;
-const PALETTE_MAX_DARKEN = 0.16;
+const PALETTE_MAX_DARKEN = 0.18;
 const PALETTE_MAX_LIGHTEN = 0.18;
-const LOGO_ROW_PHASE_STEP = 0.1;
+const LOGO_ROW_PHASE_STEP = 0.12;
 
 const ANSI_16_RGB_TABLE: Rgb[] = [
   [0, 0, 0],
