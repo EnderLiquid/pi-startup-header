@@ -22,6 +22,7 @@
     ".": "./extensions/pi-startup-header.ts"
   },
   "pi": {
+    "image": "https://fastly.jsdelivr.net/gh/EnderLiquid/pi-startup-header@main/assets/cover.png",
     "extensions": [
       "./extensions"
     ]
