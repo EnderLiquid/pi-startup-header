@@ -1,0 +1,47 @@
+{
+  "name": "pi-startup-header",
+  "version": "0.1.0",
+  "description": "Theme-aware gradient ASCII startup header for the Pi coding agent.",
+  "type": "module",
+  "license": "MIT",
+  "author": "EnderLiquid",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "pi-header",
+    "startup-header",
+    "ascii-art"
+  ],
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./extensions/pi-startup-header.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "homepage": "https://github.com/EnderLiquid/pi-startup-header#readme",
+  "bugs": {
+    "url": "https://github.com/EnderLiquid/pi-startup-header/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EnderLiquid/pi-startup-header.git"
+  },
+  "scripts": {
+    "test:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3"
+  }
+}
