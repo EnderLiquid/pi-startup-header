@@ -36,7 +36,7 @@ pi install git:github.com/EnderLiquid/pi-startup-header
 
 A great AI coding terminal deserves a better startup header — that is exactly what `pi-startup-header` is for.
 
-Pi's official website already leaves a strong visual impression. Why not bring some of that feeling into the terminal?
+[Pi's official website](https://pi.dev/) already leaves a strong visual impression. Why not bring some of that feeling into the terminal?
 
 `pi-startup-header` does one thing: it replaces the default top header at session start with a Pi-style gradient ASCII logo and tagline. The colors of both the logo and the tagline are derived entirely from your current Pi theme, so the result stays visually consistent without any extra configuration.
 
@@ -46,7 +46,7 @@ From the moment Pi starts, the interface feels just a little different.
 
 A picture is worth a thousand words:
 
-![Pi Startup Header preview](./assets/preview.png)
+![Pi Startup Header preview](https://fastly.jsdelivr.net/gh/EnderLiquid/pi-startup-header@main/assets/preview.png)
 
 ## License
 

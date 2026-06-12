@@ -46,7 +46,7 @@ pi install git:github.com/EnderLiquid/pi-startup-header
 
 一张图胜过千言万语：
 
-![Pi Startup Header 预览图](./assets/preview.png)
+![Pi Startup Header 预览图](https://fastly.jsdelivr.net/gh/EnderLiquid/pi-startup-header@main/assets/preview.png)
 
 ## 许可证
 
