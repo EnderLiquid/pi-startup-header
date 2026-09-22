@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { HeaderColor, createThemeColorGuard } from "../extensions/shared/header-color.ts";
 import {
@@ -71,6 +71,24 @@ function limitedGuard(known: readonly string[]) {
   return createThemeColorGuard(createLimitedTheme(known));
 }
 
+const tempConfigPaths: string[] = [];
+
+/**
+ * 生成一次性配置文件路径，测试结束后统一清理。
+ * 有些用例只借路径不落盘（缺失文件本身也是一种输入），因此用 force 删除。
+ */
+function createTempConfigPath(): string {
+  const path = join(tmpdir(), `pi-startup-header-${randomUUID()}.json`);
+  tempConfigPaths.push(path);
+  return path;
+}
+
+after(() => {
+  for (const path of tempConfigPaths) {
+    rmSync(path, { force: true });
+  }
+});
+
 test("未配置时使用既有的三种默认 ThemeColor", () => {
   const theme = createLimitedTheme(["accent", "mdLink"]);
   const colors = resolveHeaderColorSettings(EMPTY_STARTUP_HEADER_CONFIG, "test-theme");
@@ -81,7 +99,7 @@ test("未配置时使用既有的三种默认 ThemeColor", () => {
 });
 
 test("不存在配置文件时静默使用默认配置", async () => {
-  const path = join(tmpdir(), `pi-startup-header-${randomUUID()}.json`);
+  const path = createTempConfigPath();
 
   assert.equal(await loadStartupHeaderConfig(path, acceptsAll), EMPTY_STARTUP_HEADER_CONFIG);
 });
@@ -154,7 +172,7 @@ test("解析失败时错误信息包含具体字段路径", () => {
 });
 
 test("配置加载失败时保留底层错误信息", async () => {
-  const path = join(tmpdir(), `pi-startup-header-${randomUUID()}.json`);
+  const path = createTempConfigPath();
   writeFileSync(path, '{ not json');
 
   await assert.rejects(
@@ -239,6 +257,13 @@ test("HeaderColor 委托 ThemeColor 和直接 RGB 的文本渲染", () => {
     HeaderColor.parse(39, "color", acceptsAll).paint(theme, "text"),
     "\x1b[38;2;0;175;255mtext\x1b[0m",
   );
+});
+
+test("文本渲染在 ThemeColor 取值失败时返回原文", () => {
+  // 渲染期兜底：配置校验通过后，主题仍可能不再认识该 token，此时不能抛进 render()。
+  const theme = createTheme();
+
+  assert.equal(HeaderColor.parse("accent", "color", acceptsAll).paint(theme, "text"), "text");
 });
 
 test("Logo 渐变始终以最大行宽计算横向位置", () => {
