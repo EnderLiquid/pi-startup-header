@@ -28,7 +28,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.84.0"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "homepage": "https://github.com/EnderLiquid/pi-startup-header#readme",
   "bugs": {
@@ -43,7 +43,7 @@
     "test:types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.0",
+    "@earendil-works/pi-coding-agent": "*",
     "@types/node": "^24.10.0",
     "tsx": "^4.23.10",
     "typescript": "^5.9.3"

@@ -93,10 +93,6 @@ A picture is worth a thousand words:
 
 ![Pi Startup Header preview](https://fastly.jsdelivr.net/gh/EnderLiquid/pi-startup-header@main/assets/preview.png)
 
-## Requirements
-
-This plugin requires Pi 0.84.0 or later.
-
 ## License
 
 MIT License

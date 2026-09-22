@@ -93,10 +93,6 @@ pi install git:github.com/EnderLiquid/pi-startup-header
 
 ![Pi Startup Header 预览图](https://fastly.jsdelivr.net/gh/EnderLiquid/pi-startup-header@main/assets/preview.png)
 
-## 依赖
-
-本插件需要 Pi 0.84.0 或更高版本。
-
 ## 许可证
 
 MIT License
