@@ -35,66 +35,30 @@ const ANSI_16_RGB_TABLE: Rgb[] = [
   [255, 255, 255],
 ];
 
-const THEME_COLOR_VALUES = [
-  "accent",
-  "border",
-  "borderAccent",
-  "borderMuted",
-  "success",
-  "error",
-  "warning",
-  "muted",
-  "dim",
-  "text",
-  "thinkingText",
-  "userMessageText",
-  "customMessageText",
-  "customMessageLabel",
-  "toolTitle",
-  "toolOutput",
-  "mdHeading",
-  "mdLink",
-  "mdLinkUrl",
-  "mdCode",
-  "mdCodeBlock",
-  "mdCodeBlockBorder",
-  "mdQuote",
-  "mdQuoteBorder",
-  "mdHr",
-  "mdListBullet",
-  "toolDiffAdded",
-  "toolDiffRemoved",
-  "toolDiffContext",
-  "syntaxComment",
-  "syntaxKeyword",
-  "syntaxFunction",
-  "syntaxVariable",
-  "syntaxString",
-  "syntaxNumber",
-  "syntaxType",
-  "syntaxOperator",
-  "syntaxPunctuation",
-  "thinkingOff",
-  "thinkingMinimal",
-  "thinkingLow",
-  "thinkingMedium",
-  "thinkingHigh",
-  "thinkingXhigh",
-  "thinkingMax",
-  "bashMode",
-] as const satisfies readonly ThemeColor[];
-
-type AssertNever<T extends never> = T;
-type MissingThemeColors = AssertNever<Exclude<ThemeColor, (typeof THEME_COLOR_VALUES)[number]>>;
-
-const THEME_COLOR_SET = new Set<string>(THEME_COLOR_VALUES);
-
 function isHexRgb(value: unknown): value is `#${string}` {
   return typeof value === "string" && HEX_RGB_PATTERN.test(value);
 }
 
-function isThemeColor(value: unknown): value is ThemeColor {
-  return typeof value === "string" && THEME_COLOR_SET.has(value);
+/**
+ * 判定某个前景色 token 是否被当前 Pi 认识。
+ *
+ * Pi 的 ThemeColor 联合体会随版本增删，扩展发布后无法通过编译期检查发现这种变化，
+ * 因此不用静态名单，改为向主题实例探测。判定依据是 Theme#getFgAnsi 对未知 token
+ * 会抛错，这与 HeaderColor.toRgb() 取值走的是同一个方法，两边判断标准一致。
+ *
+ * 该抛错行为未写入类型契约，属于实现细节；若 Pi 将来改为静默回退，非空校验能挡住
+ * 一部分情形，但无法完全区分，因此渲染期仍保留取值兜底。
+ */
+export type ThemeColorGuard = (token: string) => boolean;
+
+export function createThemeColorGuard(theme: Theme): ThemeColorGuard {
+  return (token) => {
+    try {
+      return theme.getFgAnsi(token as ThemeColor).length > 0;
+    } catch {
+      return false;
+    }
+  };
 }
 
 function ansi16ToRgb(index: number): Rgb {
@@ -170,7 +134,13 @@ export class HeaderColor {
     return new HeaderColor({ kind: "theme", token });
   }
 
-  static parse(value: unknown, path: string): HeaderColor {
+  /**
+   * 按配置值的形状解析颜色。
+   *
+   * token 是否合法由调用方传入的 guard 判定：合法性取决于运行时 Pi 版本，
+   * 扩展无法在编译期得知。Hex 与 256 色索引与版本无关，只做格式校验。
+   */
+  static parse(value: unknown, path: string, isThemeColor: ThemeColorGuard): HeaderColor {
     if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255) {
       return new HeaderColor({ kind: "rgb", value: ansi256ToRgb(value) });
     }
@@ -179,8 +149,16 @@ export class HeaderColor {
       return new HeaderColor({ kind: "rgb", value: parseHexRgb(value) });
     }
 
-    if (isThemeColor(value)) {
-      return HeaderColor.fromThemeColor(value);
+    if (typeof value === "string" && value.length > 0) {
+      if (value.startsWith("#")) {
+        throw new Error(`${path} must be a 6-digit #RRGGBB value`);
+      }
+
+      if (!isThemeColor(value)) {
+        throw new Error(`${path} is not a theme color known to the running Pi: ${value}`);
+      }
+
+      return HeaderColor.fromThemeColor(value as ThemeColor);
     }
 
     throw new Error(`${path} must be a ThemeColor, #RRGGBB value, or integer from 0 to 255`);
@@ -191,14 +169,22 @@ export class HeaderColor {
       return this.source.value;
     }
 
-    return parseForegroundRgbFromAnsi(theme.getFgAnsi(this.source.token));
+    try {
+      return parseForegroundRgbFromAnsi(theme.getFgAnsi(this.source.token));
+    } catch {
+      return undefined;
+    }
   }
 
   paint(theme: Theme, text: string): string {
-    if (this.source.kind === "theme") {
-      return theme.fg(this.source.token, text);
+    if (this.source.kind === "rgb") {
+      return paintRgb(this.source.value, text);
     }
 
-    return paintRgb(this.source.value, text);
+    try {
+      return theme.fg(this.source.token, text);
+    } catch {
+      return text;
+    }
   }
 }

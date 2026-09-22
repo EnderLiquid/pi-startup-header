@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import {
   HeaderColor,
   type HeaderColorConfigValue,
+  type ThemeColorGuard,
 } from "./header-color.ts";
 
 const HEADER_COLOR_KEYS = ["logoGradientBase", "textBase", "textHighlight"] as const;
@@ -62,21 +63,29 @@ function expectRecord(value: unknown, path: string): Record<string, unknown> {
   return value;
 }
 
-function parseHeaderColorSettings(value: unknown, path: string): HeaderColorSettings {
+function parseHeaderColorSettings(
+  value: unknown,
+  path: string,
+  isThemeColor: ThemeColorGuard,
+): HeaderColorSettings {
   const settings = expectRecord(value, path);
   assertKnownKeys(settings, HEADER_COLOR_KEYS, path);
 
   const result: HeaderColorSettings = {};
   for (const key of HEADER_COLOR_KEYS) {
     if (Object.hasOwn(settings, key)) {
-      result[key] = HeaderColor.parse(settings[key], `${path}.${key}`);
+      result[key] = HeaderColor.parse(settings[key], `${path}.${key}`, isThemeColor);
     }
   }
 
   return result;
 }
 
-function parseThemeOverride(value: unknown, index: number): ThemeOverride {
+function parseThemeOverride(
+  value: unknown,
+  index: number,
+  isThemeColor: ThemeColorGuard,
+): ThemeOverride {
   const path = `themeOverrides[${index}]`;
   const override = expectRecord(value, path);
   assertKnownKeys(override, THEME_OVERRIDE_KEYS, path);
@@ -88,21 +97,24 @@ function parseThemeOverride(value: unknown, index: number): ThemeOverride {
   const colors: HeaderColorSettings = {};
   for (const key of HEADER_COLOR_KEYS) {
     if (Object.hasOwn(override, key)) {
-      colors[key] = HeaderColor.parse(override[key], `${path}.${key}`);
+      colors[key] = HeaderColor.parse(override[key], `${path}.${key}`, isThemeColor);
     }
   }
 
   return { theme: override.theme, ...colors };
 }
 
-export function parseStartupHeaderConfig(value: unknown): StartupHeaderConfig {
+export function parseStartupHeaderConfig(
+  value: unknown,
+  isThemeColor: ThemeColorGuard,
+): StartupHeaderConfig {
   const config = expectRecord(value, "configuration");
   assertKnownKeys(config, CONFIGURATION_KEYS, "configuration");
 
   const result: StartupHeaderConfig = {};
 
   if (Object.hasOwn(config, "general")) {
-    result.general = parseHeaderColorSettings(config.general, "general");
+    result.general = parseHeaderColorSettings(config.general, "general", isThemeColor);
   }
 
   if (Object.hasOwn(config, "themeOverrides")) {
@@ -112,7 +124,7 @@ export function parseStartupHeaderConfig(value: unknown): StartupHeaderConfig {
 
     const themeNames = new Set<string>();
     result.themeOverrides = config.themeOverrides.map((override, index) => {
-      const parsedOverride = parseThemeOverride(override, index);
+      const parsedOverride = parseThemeOverride(override, index, isThemeColor);
       if (themeNames.has(parsedOverride.theme)) {
         throw new Error(`themeOverrides contains a duplicate theme: ${parsedOverride.theme}`);
       }
@@ -133,7 +145,21 @@ function isMissingFileError(error: unknown): boolean {
   );
 }
 
-export async function loadStartupHeaderConfig(path: string): Promise<StartupHeaderConfig> {
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : String(error);
+}
+
+/**
+ * 组合配置失败警告，保留底层错误信息。
+ */
+export function configurationWarning(error: unknown): string {
+  return `${CONFIGURATION_WARNING} (${errorMessage(error)})`;
+}
+
+export async function loadStartupHeaderConfig(
+  path: string,
+  isThemeColor: ThemeColorGuard,
+): Promise<StartupHeaderConfig> {
   let content: string;
 
   try {
@@ -146,7 +172,14 @@ export async function loadStartupHeaderConfig(path: string): Promise<StartupHead
     throw error;
   }
 
-  return parseStartupHeaderConfig(JSON.parse(content) as unknown);
+  let json: unknown;
+  try {
+    json = JSON.parse(content) as unknown;
+  } catch (error) {
+    throw new Error(`${path} is not valid JSON: ${errorMessage(error)}`);
+  }
+
+  return parseStartupHeaderConfig(json, isThemeColor);
 }
 
 export function resolveHeaderColorSettings(

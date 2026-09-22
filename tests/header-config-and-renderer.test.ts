@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
-import { HeaderColor } from "../extensions/shared/header-color.ts";
+import { HeaderColor, createThemeColorGuard } from "../extensions/shared/header-color.ts";
 import {
   DEFAULT_HEADER_COLORS,
   EMPTY_STARTUP_HEADER_CONFIG,
+  configurationWarning,
   loadStartupHeaderConfig,
   parseStartupHeaderConfig,
   resolveHeaderColorSettings,
@@ -24,12 +26,20 @@ function createTheme(
   colors: Partial<Record<ThemeColor, string>> = {},
   name = "test-theme",
 ): Theme {
+  const getFgAnsi = (color: ThemeColor): string => {
+    const ansi = colors[color];
+    if (ansi === undefined) {
+      // 与 Pi 的 Theme#getFgAnsi 一致：未知 token 抛错。
+      throw new Error(`Unknown theme color: ${color}`);
+    }
+    return ansi;
+  };
+
   return {
     name,
-    getFgAnsi(color: ThemeColor): string {
-      return colors[color] ?? "\x1b[39m";
-    },
+    getFgAnsi,
     fg(color: ThemeColor, text: string): string {
+      getFgAnsi(color);
       return `<${color}>${text}</${color}>`;
     },
     bold(text: string): string {
@@ -38,8 +48,31 @@ function createTheme(
   } as unknown as Theme;
 }
 
+/**
+ * 一个只认识给定 token 的主题，用于模拟特定 Pi 版本的色名集合。
+ *
+ * 参数取 string[] 而非 ThemeColor[]：测试需要用到当前开发基线尚未定义、
+ * 但后续版本已加入的 token，这正是版本探测机制要处理的情形。
+ */
+function createLimitedTheme(known: readonly string[], name = "test-theme"): Theme {
+  return createTheme(
+    Object.fromEntries(known.map((token) => [token, "\x1b[39m"])) as Partial<
+      Record<ThemeColor, string>
+    >,
+    name,
+  );
+}
+
+/** 接受任意非空 token 的 guard，用于只关心形状校验的用例。 */
+const acceptsAll = () => true;
+
+/** 模拟特定 Pi 版本认识的 token 集合。 */
+function limitedGuard(known: readonly string[]) {
+  return createThemeColorGuard(createLimitedTheme(known));
+}
+
 test("未配置时使用既有的三种默认 ThemeColor", () => {
-  const theme = createTheme();
+  const theme = createLimitedTheme(["accent", "mdLink"]);
   const colors = resolveHeaderColorSettings(EMPTY_STARTUP_HEADER_CONFIG, "test-theme");
 
   assert.equal(colors.logoGradientBase, DEFAULT_HEADER_COLORS.logoGradientBase);
@@ -50,10 +83,11 @@ test("未配置时使用既有的三种默认 ThemeColor", () => {
 test("不存在配置文件时静默使用默认配置", async () => {
   const path = join(tmpdir(), `pi-startup-header-${randomUUID()}.json`);
 
-  assert.equal(await loadStartupHeaderConfig(path), EMPTY_STARTUP_HEADER_CONFIG);
+  assert.equal(await loadStartupHeaderConfig(path, acceptsAll), EMPTY_STARTUP_HEADER_CONFIG);
 });
 
 test("general 与主题专属配置按字段合并", () => {
+  const guard = limitedGuard(["success", "thinkingMax", "mdHeading"]);
   const config = parseStartupHeaderConfig({
     general: {
       logoGradientBase: "success",
@@ -67,8 +101,8 @@ test("general 与主题专属配置按字段合并", () => {
         textHighlight: "mdHeading",
       },
     ],
-  });
-  const theme = createTheme();
+  }, guard);
+  const theme = createLimitedTheme(["success", "thinkingMax", "mdHeading"]);
   const matched = resolveHeaderColorSettings(config, "test-theme");
   const unmatched = resolveHeaderColorSettings(config, "other-theme");
 
@@ -80,27 +114,74 @@ test("general 与主题专属配置按字段合并", () => {
   assert.equal(resolveHeaderColorSettings(config, undefined).logoGradientBase.paint(theme, "text"), "<success>text</success>");
 });
 
-test("HeaderColor 接受新增的 thinkingMax ThemeColor", () => {
-  assert.doesNotThrow(() => HeaderColor.parse("thinkingMax", "color"));
-  assert.throws(() => HeaderColor.parse("selectedBg", "color"));
-
-  const config = parseStartupHeaderConfig({
-    general: { textHighlight: "thinkingMax" },
-  });
-  assert.equal(
-    resolveHeaderColorSettings(config, "test-theme").textHighlight.paint(createTheme(), "text"),
-    "<thinkingMax>text</thinkingMax>",
+test("字符串形态的非 token 在解析时被拒绝", () => {
+  // "39" 与主题变量名都是合法字符串，无法在不知道 Pi 版本的情况下区分，
+  // 因此合法性完全交给 guard；guard 不认识就报错并带上字段路径。
+  assert.throws(
+    () => parseStartupHeaderConfig({ general: { textBase: "39" } }, limitedGuard([])),
+    /general\.textBase is not a theme color known to the running Pi: 39/,
+  );
+  assert.throws(
+    () => parseStartupHeaderConfig({ general: { textBase: "primary" } }, limitedGuard([])),
+    /is not a theme color known to the running Pi: primary/,
   );
 });
 
-test("拒绝无效颜色、未知字段和重复主题覆盖", () => {
+test("当前 Pi 新增的 token 无需升级插件即可使用", () => {
+  // 静态名单做不到的部分：guard 认识 scrollbarTrack / searchMatchText 就应通过。
+  const guard = limitedGuard(["scrollbarTrack", "searchMatchText"]);
+  const config = parseStartupHeaderConfig(
+    { general: { logoGradientBase: "scrollbarTrack", textBase: "searchMatchText" } },
+    guard,
+  );
+
+  const theme = createLimitedTheme(["scrollbarTrack", "searchMatchText"]);
+  assert.equal(config.general?.logoGradientBase?.paint(theme, "text"), "<scrollbarTrack>text</scrollbarTrack>");
+  assert.equal(config.general?.textBase?.paint(theme, "text"), "<searchMatchText>text</searchMatchText>");
+  // guard 拒绝的 token 则报错，且不会因为“当前基线恰好含有”而放行。
+  assert.throws(() => parseStartupHeaderConfig({ general: { textBase: "accent" } }, guard));
+});
+
+test("解析失败时错误信息包含具体字段路径", () => {
+  assert.throws(
+    () =>
+      parseStartupHeaderConfig(
+        { themeOverrides: [{ theme: "t", logoGradientBase: "bogus" }] },
+        limitedGuard([]),
+      ),
+    /themeOverrides\[0\]\.logoGradientBase is not a theme color known to the running Pi: bogus/,
+  );
+});
+
+test("配置加载失败时保留底层错误信息", async () => {
+  const path = join(tmpdir(), `pi-startup-header-${randomUUID()}.json`);
+  writeFileSync(path, '{ not json');
+
+  await assert.rejects(
+    () => loadStartupHeaderConfig(path, acceptsAll),
+    /is not valid JSON/,
+  );
+
+  writeFileSync(path, JSON.stringify({ general: { textBase: "bogus" } }));
+  await assert.rejects(
+    () => loadStartupHeaderConfig(path, limitedGuard([])),
+    /general\.textBase is not a theme color known to the running Pi: bogus/,
+  );
+
+  // 展示用警告需要把底层原因带出去。
+  const warning = configurationWarning(new Error("general.textBase must be a 6-digit #RRGGBB value"));
+  assert.match(warning, /Failed to load pi-startup-header configuration/);
+  assert.match(warning, /general\.textBase must be a 6-digit #RRGGBB value/);
+});
+
+test("拒绝无效颜色形状、未知字段和重复主题覆盖", () => {
   const invalidConfigs = [
     { general: { textBase: "#fff" } },
-    { general: { textBase: "39" } },
     { general: { textBase: -1 } },
     { general: { textBase: 256 } },
-    { general: { textBase: "not-a-theme-variable" } },
+    { general: { textBase: "#" } },
     { general: { textBase: "" } },
+    { general: { textBase: 1.5 } },
     { general: { selectedBg: "accent" } },
     {
       themeOverrides: [
@@ -111,36 +192,37 @@ test("拒绝无效颜色、未知字段和重复主题覆盖", () => {
   ];
 
   for (const config of invalidConfigs) {
-    assert.throws(() => parseStartupHeaderConfig(config));
+    assert.throws(() => parseStartupHeaderConfig(config, acceptsAll));
   }
 });
 
 test("HeaderColor 在解析时统一转换 Hex 与 256 色输入", () => {
   const theme = createTheme();
 
-  assert.deepEqual(HeaderColor.parse("#12AbEf", "color").toRgb(theme), [18, 171, 239]);
-  assert.deepEqual(HeaderColor.parse(39, "color").toRgb(theme), [0, 175, 255]);
-  assert.deepEqual(HeaderColor.parse(255, "color").toRgb(theme), [238, 238, 238]);
+  assert.deepEqual(HeaderColor.parse("#12AbEf", "color", acceptsAll).toRgb(theme), [18, 171, 239]);
+  assert.deepEqual(HeaderColor.parse(39, "color", acceptsAll).toRgb(theme), [0, 175, 255]);
+  assert.deepEqual(HeaderColor.parse(255, "color", acceptsAll).toRgb(theme), [238, 238, 238]);
 });
 
 test("Logo base 保留 ThemeColor ANSI 解析失败时的 fallback", () => {
-  const resolvableTheme = createTheme({ accent: "\x1b[38;2;12;34;56m" });
+  const resolvableTheme = createLimitedTheme(["accent"]);
+  const resolvable = createTheme({ accent: "\x1b[38;2;12;34;56m" });
   const unresolvedTheme = createTheme();
 
   assert.deepEqual(
-    resolveLogoGradientBaseRgb(resolvableTheme, HeaderColor.parse("accent", "color")),
+    resolveLogoGradientBaseRgb(resolvable, HeaderColor.parse("accent", "color", acceptsAll)),
     [12, 34, 56],
   );
   assert.deepEqual(
-    resolveLogoGradientBaseRgb(resolvableTheme, HeaderColor.parse("#abcdef", "color")),
+    resolveLogoGradientBaseRgb(resolvableTheme, HeaderColor.parse("#abcdef", "color", acceptsAll)),
     [171, 205, 239],
   );
   assert.deepEqual(
-    resolveLogoGradientBaseRgb(resolvableTheme, HeaderColor.parse(39, "color")),
+    resolveLogoGradientBaseRgb(resolvableTheme, HeaderColor.parse(39, "color", acceptsAll)),
     [0, 175, 255],
   );
   assert.deepEqual(
-    resolveLogoGradientBaseRgb(unresolvedTheme, HeaderColor.parse("accent", "color")),
+    resolveLogoGradientBaseRgb(unresolvedTheme, HeaderColor.parse("accent", "color", acceptsAll)),
     FALLBACK_LOGO_GRADIENT_BASE_RGB,
   );
 });
@@ -148,13 +230,13 @@ test("Logo base 保留 ThemeColor ANSI 解析失败时的 fallback", () => {
 test("HeaderColor 委托 ThemeColor 和直接 RGB 的文本渲染", () => {
   const theme = createTheme({ accent: "\x1b[38;2;12;34;56m" });
 
-  assert.equal(HeaderColor.parse("accent", "color").paint(theme, "text"), "<accent>text</accent>");
+  assert.equal(HeaderColor.parse("accent", "color", acceptsAll).paint(theme, "text"), "<accent>text</accent>");
   assert.equal(
-    HeaderColor.parse("#010203", "color").paint(theme, "text"),
+    HeaderColor.parse("#010203", "color", acceptsAll).paint(theme, "text"),
     "\x1b[38;2;1;2;3mtext\x1b[0m",
   );
   assert.equal(
-    HeaderColor.parse(39, "color").paint(theme, "text"),
+    HeaderColor.parse(39, "color", acceptsAll).paint(theme, "text"),
     "\x1b[38;2;0;175;255mtext\x1b[0m",
   );
 });

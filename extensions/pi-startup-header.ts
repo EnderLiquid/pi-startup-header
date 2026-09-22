@@ -1,8 +1,9 @@
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
+import { createThemeColorGuard } from "./shared/header-color.ts";
 import {
-  CONFIGURATION_WARNING,
   EMPTY_STARTUP_HEADER_CONFIG,
+  configurationWarning,
   loadStartupHeaderConfig,
 } from "./shared/header-config.ts";
 import { renderHeaderLines } from "./shared/header-renderer.ts";
@@ -16,9 +17,14 @@ export default function piStartupHeader(pi: ExtensionAPI) {
     let config = EMPTY_STARTUP_HEADER_CONFIG;
 
     try {
-      config = await loadStartupHeaderConfig(join(getAgentDir(), CONFIG_FILE_NAME));
-    } catch {
-      ctx.ui.notify(CONFIGURATION_WARNING, "warning");
+      // token 合法性由当前主题实例判定；主题色集合由 Pi 版本决定，与所选主题无关，
+      // 因此这里判定一次即可覆盖后续所有主题切换。
+      config = await loadStartupHeaderConfig(
+        join(getAgentDir(), CONFIG_FILE_NAME),
+        createThemeColorGuard(ctx.ui.theme),
+      );
+    } catch (error) {
+      ctx.ui.notify(configurationWarning(error), "warning");
     }
 
     ctx.ui.setHeader((_tui, theme) => ({

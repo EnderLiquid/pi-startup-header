@@ -85,7 +85,7 @@ Each color field is resolved independently according to the following precedence
 - When no override matches, values from `general` are used; omitted `general` fields inherit the built-in defaults.
 - The built-in defaults use `accent` for the Logo gradient and normal tagline text, and `mdLink` for highlighted text.
 
-Run `/reload` after editing the configuration file to apply the change. If the JSON or configuration values are invalid, the plugin shows a warning at startup and falls back to the default configuration.
+Run `/reload` after editing the configuration file to apply the change. If the JSON or configuration values are invalid, the plugin shows a warning at startup and falls back to the default configuration. Because color names are validated against the Pi version you are running, colors added in newer Pi versions work without upgrading the plugin, and the warning names the offending field if one is not recognized.
 
 ## Preview
 
