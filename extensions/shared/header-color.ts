@@ -141,7 +141,7 @@ export class HeaderColor {
    * token 是否合法由调用方传入的 guard 判定：合法性取决于运行时 Pi 版本，
    * 扩展无法在编译期得知。Hex 与 256 色索引与版本无关，只做格式校验。
    */
-  static parse(value: unknown, path: string, isThemeColor: ThemeColorGuard): HeaderColor {
+  static parse(value: unknown, path: string, guard: ThemeColorGuard): HeaderColor {
     if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255) {
       return new HeaderColor({ kind: "rgb", value: ansi256ToRgb(value) });
     }
@@ -161,7 +161,7 @@ export class HeaderColor {
         throw new Error(`${path} must be an integer from 0 to 255, not a string: ${value}`);
       }
 
-      if (!isThemeColor(value)) {
+      if (!guard(value)) {
         throw new Error(`${path} is not a theme color known to the running Pi: ${value}`);
       }
 

@@ -22,7 +22,7 @@ export type StartupHeaderConfig = {
   themeOverrides?: ThemeOverride[];
 };
 
-export const CONFIGURATION_WARNING =
+const CONFIGURATION_WARNING =
   "Failed to load pi-startup-header configuration. Using default colors.";
 
 const DEFAULT_HEADER_COLOR_CONFIG = {
@@ -66,7 +66,7 @@ function expectRecord(value: unknown, path: string): Record<string, unknown> {
 function parseHeaderColorSettings(
   value: unknown,
   path: string,
-  isThemeColor: ThemeColorGuard,
+  guard: ThemeColorGuard,
 ): HeaderColorSettings {
   const settings = expectRecord(value, path);
   assertKnownKeys(settings, HEADER_COLOR_KEYS, path);
@@ -74,7 +74,7 @@ function parseHeaderColorSettings(
   const result: HeaderColorSettings = {};
   for (const key of HEADER_COLOR_KEYS) {
     if (Object.hasOwn(settings, key)) {
-      result[key] = HeaderColor.parse(settings[key], `${path}.${key}`, isThemeColor);
+      result[key] = HeaderColor.parse(settings[key], `${path}.${key}`, guard);
     }
   }
 
@@ -84,7 +84,7 @@ function parseHeaderColorSettings(
 function parseThemeOverride(
   value: unknown,
   index: number,
-  isThemeColor: ThemeColorGuard,
+  guard: ThemeColorGuard,
 ): ThemeOverride {
   const path = `themeOverrides[${index}]`;
   const override = expectRecord(value, path);
@@ -97,7 +97,7 @@ function parseThemeOverride(
   const colors: HeaderColorSettings = {};
   for (const key of HEADER_COLOR_KEYS) {
     if (Object.hasOwn(override, key)) {
-      colors[key] = HeaderColor.parse(override[key], `${path}.${key}`, isThemeColor);
+      colors[key] = HeaderColor.parse(override[key], `${path}.${key}`, guard);
     }
   }
 
@@ -106,7 +106,7 @@ function parseThemeOverride(
 
 export function parseStartupHeaderConfig(
   value: unknown,
-  isThemeColor: ThemeColorGuard,
+  guard: ThemeColorGuard,
 ): StartupHeaderConfig {
   const config = expectRecord(value, "configuration");
   assertKnownKeys(config, CONFIGURATION_KEYS, "configuration");
@@ -114,7 +114,7 @@ export function parseStartupHeaderConfig(
   const result: StartupHeaderConfig = {};
 
   if (Object.hasOwn(config, "general")) {
-    result.general = parseHeaderColorSettings(config.general, "general", isThemeColor);
+    result.general = parseHeaderColorSettings(config.general, "general", guard);
   }
 
   if (Object.hasOwn(config, "themeOverrides")) {
@@ -124,7 +124,7 @@ export function parseStartupHeaderConfig(
 
     const themeNames = new Set<string>();
     result.themeOverrides = config.themeOverrides.map((override, index) => {
-      const parsedOverride = parseThemeOverride(override, index, isThemeColor);
+      const parsedOverride = parseThemeOverride(override, index, guard);
       if (themeNames.has(parsedOverride.theme)) {
         throw new Error(`themeOverrides contains a duplicate theme: ${parsedOverride.theme}`);
       }
@@ -158,7 +158,7 @@ export function configurationWarning(error: unknown): string {
 
 export async function loadStartupHeaderConfig(
   path: string,
-  isThemeColor: ThemeColorGuard,
+  guard: ThemeColorGuard,
 ): Promise<StartupHeaderConfig> {
   let content: string;
 
@@ -179,7 +179,7 @@ export async function loadStartupHeaderConfig(
     throw new Error(`${path} is not valid JSON: ${errorMessage(error)}`);
   }
 
-  return parseStartupHeaderConfig(json, isThemeColor);
+  return parseStartupHeaderConfig(json, guard);
 }
 
 export function resolveHeaderColorSettings(
