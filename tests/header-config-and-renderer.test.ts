@@ -132,13 +132,14 @@ test("general 与主题专属配置按字段合并", () => {
   assert.equal(resolveHeaderColorSettings(config, undefined).logoGradientBase.paint(theme, "text"), "<success>text</success>");
 });
 
-test("字符串形态的非 token 在解析时被拒绝", () => {
-  // "39" 与主题变量名都是合法字符串，无法在不知道 Pi 版本的情况下区分，
-  // 因此合法性完全交给 guard；guard 不认识就报错并带上字段路径。
+test("无效的字符串颜色值在解析时被拒绝", () => {
+  // 数字写成字符串属于形状错误，在 guard 表态前就拒绝，并提示应写成 JSON 数字。
   assert.throws(
-    () => parseStartupHeaderConfig({ general: { textBase: "39" } }, limitedGuard([])),
-    /general\.textBase is not a theme color known to the running Pi: 39/,
+    () => parseStartupHeaderConfig({ general: { textBase: "39" } }, acceptsAll),
+    /general\.textBase must be an integer from 0 to 255, not a string: 39/,
   );
+  // 主题变量名这类字符串无法在不知道 Pi 版本的情况下区分，合法性完全交给 guard；
+  // guard 不认识就报错并带上字段路径。
   assert.throws(
     () => parseStartupHeaderConfig({ general: { textBase: "primary" } }, limitedGuard([])),
     /is not a theme color known to the running Pi: primary/,

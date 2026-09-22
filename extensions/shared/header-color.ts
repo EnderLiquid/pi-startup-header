@@ -15,6 +15,7 @@ type HeaderColorSource =
 
 const ANSI_RESET = "\x1b[0m";
 const HEX_RGB_PATTERN = /^#[0-9a-fA-F]{6}$/;
+const NUMERIC_STRING_PATTERN = /^[+-]?\d+(?:\.\d+)?$/;
 
 const ANSI_16_RGB_TABLE: Rgb[] = [
   [0, 0, 0],
@@ -152,6 +153,12 @@ export class HeaderColor {
     if (typeof value === "string" && value.length > 0) {
       if (value.startsWith("#")) {
         throw new Error(`${path} must be a 6-digit #RRGGBB value`);
+      }
+
+      // 256 色索引写成字符串是最常见的误用；若直接落进 token 判定，
+      // 报错会被引向"色名拼错"的方向，这里单独提示应写成 JSON 数字。
+      if (NUMERIC_STRING_PATTERN.test(value)) {
+        throw new Error(`${path} must be an integer from 0 to 255, not a string: ${value}`);
       }
 
       if (!isThemeColor(value)) {
