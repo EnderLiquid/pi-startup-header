@@ -1,6 +1,6 @@
 {
   "name": "pi-startup-header",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Theme-aware gradient ASCII startup header for the Pi coding agent.",
   "type": "module",
   "license": "MIT",
