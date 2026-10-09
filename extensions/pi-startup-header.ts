@@ -1,4 +1,4 @@
-import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { createThemeColorGuard } from "./shared/header-color.ts";
 import {
@@ -10,9 +10,16 @@ import { renderHeaderLines } from "./shared/header-renderer.ts";
 
 const CONFIG_FILE_NAME = "pi-startup-header.json";
 
+function hasTuiHeaderContext(
+  ctx: Pick<ExtensionContext, "hasUI" | "mode">,
+): boolean {
+  // Pi <= 0.78.0 不提供 ctx.mode；此时保留 hasUI 兼容路径。
+  return ctx.hasUI && (ctx.mode === "tui" || ctx.mode === undefined);
+}
+
 export default function piStartupHeader(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
-    if (!ctx.hasUI) return;
+    if (!hasTuiHeaderContext(ctx)) return;
 
     let config = EMPTY_STARTUP_HEADER_CONFIG;
 
@@ -36,8 +43,7 @@ export default function piStartupHeader(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
-    if (!ctx.hasUI) return;
-
+    if (!hasTuiHeaderContext(ctx)) return;
     ctx.ui.setHeader(undefined);
   });
 }
