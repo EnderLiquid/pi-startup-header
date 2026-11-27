@@ -1,4 +1,4 @@
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { createThemeColorGuard } from "./shared/header-color.ts";
 import {
@@ -10,22 +10,13 @@ import { renderHeaderLines } from "./shared/header-renderer.ts";
 
 const CONFIG_FILE_NAME = "pi-startup-header.json";
 
-function hasTuiHeaderContext(
-  ctx: Pick<ExtensionContext, "hasUI" | "mode">,
-): boolean {
-  // Pi <= 0.78.0 不提供 ctx.mode；此时保留 hasUI 兼容路径。
-  return ctx.hasUI && (ctx.mode === "tui" || ctx.mode === undefined);
-}
-
 export default function piStartupHeader(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
-    if (!hasTuiHeaderContext(ctx)) return;
+    if (ctx.mode !== "tui") return;
 
     let config = EMPTY_STARTUP_HEADER_CONFIG;
 
     try {
-      // token 合法性由当前主题实例判定；主题色集合由 Pi 版本决定，与所选主题无关，
-      // 因此这里判定一次即可覆盖后续所有主题切换。
       config = await loadStartupHeaderConfig(
         join(getAgentDir(), CONFIG_FILE_NAME),
         createThemeColorGuard(ctx.ui.theme),
@@ -42,8 +33,7 @@ export default function piStartupHeader(pi: ExtensionAPI) {
     }));
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => {
-    if (!hasTuiHeaderContext(ctx)) return;
-    ctx.ui.setHeader(undefined);
+  pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.mode === "tui") ctx.ui.setHeader(undefined);
   });
 }

@@ -20,6 +20,8 @@ Pi can explain its own features and look up its docs. Ask it how to use or exten
 
 ## 安装
 
+**需要 Pi 0.99.0 或更新版本。**
+
 ### npm package
 
 ```bash

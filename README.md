@@ -20,6 +20,8 @@ It fits Pi's signature restraint perfectly, but after a while, it can start to f
 
 ## Install
 
+**Requires Pi 0.99.0 or later.**
+
 ### npm package
 
 ```bash

@@ -1,18 +1,10 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { paintRgb, type HeaderColor, type Rgb } from "./header-color.ts";
+import { colorToRgb, type RgbColor, type RgbColorValue } from "@earendil-works/pi-tui";
 import {
   resolveHeaderColorSettings,
   type EffectiveHeaderColorSettings,
   type StartupHeaderConfig,
 } from "./header-config.ts";
-
-type StyledPart = {
-  raw: string;
-  styled: string;
-};
-
-const ANSI_PATTERN =
-  /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
 export const LOGO_LINES = [
   "████████████╗",
@@ -30,22 +22,14 @@ const TAGLINE_LINE_1 = "There are many agent harnesses,";
 const TAGLINE_LINE_2_PREFIX = "but this one is ";
 const TAGLINE_LINE_2_HIGHLIGHT = "yours";
 const TAGLINE_LINE_2_SUFFIX = ".";
+const TAGLINE_LINE_2 = TAGLINE_LINE_2_PREFIX + TAGLINE_LINE_2_HIGHLIGHT + TAGLINE_LINE_2_SUFFIX;
 
-export const FALLBACK_LOGO_GRADIENT_BASE_RGB: Rgb = [80, 160, 255];
 export const LOGO_BLOCK_WIDTH = Math.max(...LOGO_LINES.map((line) => [...line].length));
 
 const PALETTE_STEPS = 24;
 const PALETTE_MAX_DARKEN = 0.18;
 const PALETTE_MAX_LIGHTEN = 0.18;
 const LOGO_ROW_PHASE_STEP = 0.12;
-
-function stripAnsi(text: string): string {
-  return text.replace(ANSI_PATTERN, "");
-}
-
-function getVisibleLength(text: string): number {
-  return [...stripAnsi(text)].length;
-}
 
 function clampByte(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
@@ -55,35 +39,23 @@ function interpolateChannel(start: number, end: number, factor: number): number 
   return Math.round(start + (end - start) * factor);
 }
 
-function interpolateRgb(start: Rgb, end: Rgb, factor: number): Rgb {
-  return [
-    interpolateChannel(start[0], end[0], factor),
-    interpolateChannel(start[1], end[1], factor),
-    interpolateChannel(start[2], end[2], factor),
-  ];
+function darkenRgb({ r, g, b }: RgbColor, amount: number): RgbColor {
+  return {
+    r: clampByte(r * (1 - amount)),
+    g: clampByte(g * (1 - amount)),
+    b: clampByte(b * (1 - amount)),
+  };
 }
 
-function darkenRgb(rgb: Rgb, amount: number): Rgb {
-  return [
-    clampByte(rgb[0] * (1 - amount)),
-    clampByte(rgb[1] * (1 - amount)),
-    clampByte(rgb[2] * (1 - amount)),
-  ];
+function lightenRgb({ r, g, b }: RgbColor, amount: number): RgbColor {
+  return {
+    r: clampByte(r + (255 - r) * amount),
+    g: clampByte(g + (255 - g) * amount),
+    b: clampByte(b + (255 - b) * amount),
+  };
 }
 
-function lightenRgb(rgb: Rgb, amount: number): Rgb {
-  return [
-    clampByte(rgb[0] + (255 - rgb[0]) * amount),
-    clampByte(rgb[1] + (255 - rgb[1]) * amount),
-    clampByte(rgb[2] + (255 - rgb[2]) * amount),
-  ];
-}
-
-export function resolveLogoGradientBaseRgb(theme: Theme, color: HeaderColor): Rgb {
-  return color.toRgb(theme) ?? FALLBACK_LOGO_GRADIENT_BASE_RGB;
-}
-
-function buildGradientPalette(base: Rgb): Rgb[] {
+function buildGradientPalette(base: RgbColor): RgbColor[] {
   return Array.from({ length: PALETTE_STEPS }, (_, index) => {
     const progress = index / PALETTE_STEPS;
     const wave = -Math.cos(progress * Math.PI * 2);
@@ -96,14 +68,21 @@ function buildGradientPalette(base: Rgb): Rgb[] {
   });
 }
 
-function sampleGradientColor(palette: Rgb[], position: number): Rgb {
+function sampleGradientColor(palette: RgbColor[], position: number): RgbColorValue {
   const wrappedPosition = ((position % 1) + 1) % 1;
   const scaledPosition = wrappedPosition * palette.length;
   const baseIndex = Math.floor(scaledPosition) % palette.length;
   const nextIndex = (baseIndex + 1) % palette.length;
   const factor = scaledPosition - Math.floor(scaledPosition);
+  const start = palette[baseIndex]!;
+  const end = palette[nextIndex]!;
 
-  return interpolateRgb(palette[baseIndex]!, palette[nextIndex]!, factor);
+  return {
+    kind: "rgb",
+    r: interpolateChannel(start.r, end.r, factor),
+    g: interpolateChannel(start.g, end.g, factor),
+    b: interpolateChannel(start.b, end.b, factor),
+  };
 }
 
 export function getLogoGradientPosition(index: number, phase: number): number {
@@ -111,83 +90,65 @@ export function getLogoGradientPosition(index: number, phase: number): number {
   return index / span + phase;
 }
 
-function renderLogoGradientText(text: string, palette: Rgb[], phase: number): string {
+function renderLogoGradientText(
+  text: string,
+  theme: Theme,
+  palette: RgbColor[],
+  phase: number,
+): string {
   return [...text]
     .map((character, index) => {
       if (character === " ") return character;
       const color = sampleGradientColor(palette, getLogoGradientPosition(index, phase));
-      return paintRgb(color, character);
+      return theme.style(character, { fg: color });
     })
     .join("");
 }
 
-function createCenteredBlockLine(text: string, width: number, blockWidth: number): string {
-  const leftPadding = Math.max(0, Math.floor((width - blockWidth) / 2));
-  return `${" ".repeat(leftPadding)}${text}`;
-}
+function renderCenteredLine(
+  text: string,
+  width: number,
+  renderStyled: () => string,
+  blockWidth?: number,
+): string {
+  const characters = [...text];
+  if (characters.length > width) return characters.slice(0, width).join("");
 
-function createCenteredStyledLine(parts: StyledPart[], width: number): string {
-  const rawText = parts.map((part) => part.raw).join("");
-  const leftPadding = Math.max(0, Math.floor((width - [...rawText].length) / 2));
-  const styledText = parts.map((part) => part.styled).join("");
-  return `${" ".repeat(leftPadding)}${styledText}`;
-}
-
-function fitLineToWidth(line: string, width: number): string {
-  if (getVisibleLength(line) <= width) {
-    return line;
-  }
-
-  return stripAnsi(line).slice(0, width);
+  const leftPadding = Math.max(0, Math.floor((width - (blockWidth ?? characters.length)) / 2));
+  return " ".repeat(leftPadding) + renderStyled();
 }
 
 function renderLogoLines(
   width: number,
   theme: Theme,
-  colors: EffectiveHeaderColorSettings,
+  { logoGradientBase }: EffectiveHeaderColorSettings,
 ): string[] {
-  const palette = buildGradientPalette(resolveLogoGradientBaseRgb(theme, colors.logoGradientBase));
+  const color = typeof logoGradientBase === "string" ? theme.colors[logoGradientBase] : logoGradientBase;
+  const palette = buildGradientPalette(colorToRgb(color));
 
-  return LOGO_LINES.map((line, rowIndex) => {
-    const phasedLine = renderLogoGradientText(line, palette, rowIndex * LOGO_ROW_PHASE_STEP);
-    return createCenteredBlockLine(phasedLine, width, LOGO_BLOCK_WIDTH);
-  });
+  return LOGO_LINES.map((line, rowIndex) =>
+    renderCenteredLine(
+      line,
+      width,
+      () => renderLogoGradientText(line, theme, palette, rowIndex * LOGO_ROW_PHASE_STEP),
+      LOGO_BLOCK_WIDTH,
+    ),
+  );
 }
 
 function renderTaglineLines(
   width: number,
   theme: Theme,
-  colors: EffectiveHeaderColorSettings,
+  { textBase, textHighlight }: EffectiveHeaderColorSettings,
 ): string[] {
-  const line1 = createCenteredStyledLine(
-    [
-      {
-        raw: TAGLINE_LINE_1,
-        styled: colors.textBase.paint(theme, TAGLINE_LINE_1),
-      },
-    ],
-    width,
-  );
-
-  const line2 = createCenteredStyledLine(
-    [
-      {
-        raw: TAGLINE_LINE_2_PREFIX,
-        styled: colors.textBase.paint(theme, TAGLINE_LINE_2_PREFIX),
-      },
-      {
-        raw: TAGLINE_LINE_2_HIGHLIGHT,
-        styled: theme.bold(colors.textHighlight.paint(theme, TAGLINE_LINE_2_HIGHLIGHT)),
-      },
-      {
-        raw: TAGLINE_LINE_2_SUFFIX,
-        styled: colors.textBase.paint(theme, TAGLINE_LINE_2_SUFFIX),
-      },
-    ],
-    width,
-  );
-
-  return [line1, line2];
+  return [
+    renderCenteredLine(TAGLINE_LINE_1, width, () => theme.style(TAGLINE_LINE_1, { fg: textBase })),
+    renderCenteredLine(TAGLINE_LINE_2, width, () =>
+      theme.style(TAGLINE_LINE_2_PREFIX, { fg: textBase }) +
+      theme.style(TAGLINE_LINE_2_HIGHLIGHT, { fg: textHighlight, bold: true }) +
+      theme.style(TAGLINE_LINE_2_SUFFIX, { fg: textBase }),
+    ),
+  ];
 }
 
 export function renderHeaderLines(
@@ -199,5 +160,5 @@ export function renderHeaderLines(
   const logoLines = renderLogoLines(width, theme, colors);
   const taglineLines = renderTaglineLines(width, theme, colors);
 
-  return ["", ...logoLines, "", ...taglineLines, ""].map((line) => fitLineToWidth(line, width));
+  return ["", ...logoLines, "", ...taglineLines, ""];
 }
