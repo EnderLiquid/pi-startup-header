@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { colorToRgb, type RgbColor, type RgbColorValue } from "@earendil-works/pi-tui";
+import { colorToRgb, truncateToWidth, visibleWidth, type RgbColor, type RgbColorValue } from "@earendil-works/pi-tui";
 import {
   resolveHeaderColorSettings,
   type EffectiveHeaderColorSettings,
@@ -22,9 +22,8 @@ const TAGLINE_LINE_1 = "There are many agent harnesses,";
 const TAGLINE_LINE_2_PREFIX = "but this one is ";
 const TAGLINE_LINE_2_HIGHLIGHT = "yours";
 const TAGLINE_LINE_2_SUFFIX = ".";
-const TAGLINE_LINE_2 = TAGLINE_LINE_2_PREFIX + TAGLINE_LINE_2_HIGHLIGHT + TAGLINE_LINE_2_SUFFIX;
 
-export const LOGO_BLOCK_WIDTH = Math.max(...LOGO_LINES.map((line) => [...line].length));
+export const LOGO_BLOCK_WIDTH = Math.max(...LOGO_LINES.map(visibleWidth));
 
 const PALETTE_STEPS = 24;
 const PALETTE_MAX_DARKEN = 0.18;
@@ -105,17 +104,9 @@ function renderLogoGradientText(
     .join("");
 }
 
-function renderCenteredLine(
-  text: string,
-  width: number,
-  renderStyled: () => string,
-  blockWidth?: number,
-): string {
-  const characters = [...text];
-  if (characters.length > width) return characters.slice(0, width).join("");
-
-  const leftPadding = Math.max(0, Math.floor((width - (blockWidth ?? characters.length)) / 2));
-  return " ".repeat(leftPadding) + renderStyled();
+function renderCenteredLine(line: string, width: number, blockWidth = visibleWidth(line)): string {
+  const leftPadding = Math.max(0, Math.floor((width - blockWidth) / 2));
+  return " ".repeat(leftPadding) + truncateToWidth(line, width - leftPadding, "");
 }
 
 function renderLogoLines(
@@ -128,9 +119,8 @@ function renderLogoLines(
 
   return LOGO_LINES.map((line, rowIndex) =>
     renderCenteredLine(
-      line,
+      renderLogoGradientText(line, theme, palette, rowIndex * LOGO_ROW_PHASE_STEP),
       width,
-      () => renderLogoGradientText(line, theme, palette, rowIndex * LOGO_ROW_PHASE_STEP),
       LOGO_BLOCK_WIDTH,
     ),
   );
@@ -142,11 +132,12 @@ function renderTaglineLines(
   { textBase, textHighlight }: EffectiveHeaderColorSettings,
 ): string[] {
   return [
-    renderCenteredLine(TAGLINE_LINE_1, width, () => theme.style(TAGLINE_LINE_1, { fg: textBase })),
-    renderCenteredLine(TAGLINE_LINE_2, width, () =>
+    renderCenteredLine(theme.style(TAGLINE_LINE_1, { fg: textBase }), width),
+    renderCenteredLine(
       theme.style(TAGLINE_LINE_2_PREFIX, { fg: textBase }) +
-      theme.style(TAGLINE_LINE_2_HIGHLIGHT, { fg: textHighlight, bold: true }) +
-      theme.style(TAGLINE_LINE_2_SUFFIX, { fg: textBase }),
+        theme.style(TAGLINE_LINE_2_HIGHLIGHT, { fg: textHighlight, bold: true }) +
+        theme.style(TAGLINE_LINE_2_SUFFIX, { fg: textBase }),
+      width,
     ),
   ];
 }

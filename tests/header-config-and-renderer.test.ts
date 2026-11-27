@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test, { after } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { Theme } from "@earendil-works/pi-coding-agent";
-import { colorToRgb, rgbColor, type TerminalColorMode } from "@earendil-works/pi-tui";
+import { colorToRgb, rgbColor, visibleWidth, type TerminalColorMode } from "@earendil-works/pi-tui";
 import { createThemeColorGuard, parseHeaderColor } from "../extensions/shared/header-color.ts";
 import {
   EMPTY_STARTUP_HEADER_CONFIG,
@@ -189,12 +189,24 @@ test("Logo 渐变始终以最大行宽计算横向位置", () => {
   assert.equal(getLogoGradientPosition(16, 0), 1);
 });
 
-test("Logo 按整块居中，窄窗口按行截断", () => {
+test("Logo 按整块居中，窄窗口截断时保留渐变", () => {
   const wideLines = renderHeaderLines(80, theme, EMPTY_STARTUP_HEADER_CONFIG);
-  const narrowLines = renderHeaderLines(8, theme, EMPTY_STARTUP_HEADER_CONFIG);
+  const width = 8;
+  const narrowLogo = renderHeaderLines(width, theme, EMPTY_STARTUP_HEADER_CONFIG).slice(1, 1 + LOGO_LINES.length);
   const padding = " ".repeat(Math.floor((80 - LOGO_BLOCK_WIDTH) / 2));
 
   assert.deepEqual(wideLines.slice(1, 1 + LOGO_LINES.length).map(stripVTControlCharacters), LOGO_LINES.map((line) => padding + line));
-  assert.deepEqual(narrowLines.slice(1, 1 + LOGO_LINES.length), LOGO_LINES.map((line) => line.slice(0, 8)));
-  assert.equal(narrowLines.at(-3), "There ar");
+  assert.deepEqual(narrowLogo.map(stripVTControlCharacters), LOGO_LINES.map((line) => line.slice(0, width)));
+  assert.ok(narrowLogo[0]?.startsWith(theme.style("█", { fg: rgbColor(118, 142, 145) })));
+});
+
+test("窄窗口截断标语时保留主题色和高亮粗体", () => {
+  const width = 19;
+  const lines = renderHeaderLines(width, theme, EMPTY_STARTUP_HEADER_CONFIG);
+  const tagline = lines.slice(-3, -1);
+
+  assert.ok(lines.every((line) => visibleWidth(line) <= width));
+  assert.deepEqual(tagline.map(stripVTControlCharacters), ["There are many agen", "but this one is you"]);
+  assert.match(tagline[0]!, /^\x1b\[38;2;144;173;177mThere are many agen/);
+  assert.match(tagline[1]!, /\x1b\[38;2;122;162;247m\x1b\[1myou/);
 });
