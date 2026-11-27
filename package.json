@@ -43,7 +43,7 @@
     "test:types": "tsc --noEmit"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": "1.6.1",
     "@types/node": "^24.10.0",
     "tsx": "^4.23.10",
     "typescript": "^5.9.3"
